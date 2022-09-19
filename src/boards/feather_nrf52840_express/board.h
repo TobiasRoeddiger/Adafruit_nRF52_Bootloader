@@ -66,4 +66,10 @@
 #define UF2_BOARD_ID          "nRF52840-Feather-revD"
 #define UF2_INDEX_URL         "https://www.adafruit.com/product/4062"
 
+#define RX_PIN_NUMBER      41
+#define TX_PIN_NUMBER      8
+#define CTS_PIN_NUMBER     5
+#define RTS_PIN_NUMBER     7
+#define HWFC               false
+
 #endif // _FEATHER_NRF52840_H

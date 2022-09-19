@@ -166,7 +166,8 @@ C_SRC += $(SDK_PATH)/libraries/hci/hci_transport.c
 C_SRC += $(SDK_PATH)/libraries/util/nrf_assert.c
 
 # UART or USB Serial
-ifeq ($(MCU_SUB_VARIANT),nrf52)
+# pinconfig is required for 840 for CF2
+C_SRC += src/boards/$(BOARD)/pinconfig.c
 
 C_SRC += $(SDK_PATH)/libraries/uart/app_uart.c
 C_SRC += $(SDK_PATH)/drivers_nrf/uart/nrf_drv_uart.c
@@ -175,30 +176,6 @@ C_SRC += $(SDK_PATH)/drivers_nrf/common/nrf_drv_common.c
 IPATH += $(SDK11_PATH)/libraries/util
 IPATH += $(SDK_PATH)/drivers_nrf/common
 IPATH += $(SDK_PATH)/drivers_nrf/uart
-
-else
-
-# pinconfig is required for 840 for CF2
-C_SRC += src/boards/$(BOARD)/pinconfig.c
-
-# USB Application ( MSC + UF2 )
-C_SRC += \
-	src/usb/msc_uf2.c \
-	src/usb/usb_desc.c \
-	src/usb/usb.c \
-	src/usb/uf2/ghostfat.c
-
-# TinyUSB stack
-C_SRC += \
-	$(TUSB_PATH)/portable/nordic/nrf5x/dcd_nrf5x.c \
-	$(TUSB_PATH)/common/tusb_fifo.c \
-	$(TUSB_PATH)/device/usbd.c \
-	$(TUSB_PATH)/device/usbd_control.c \
-	$(TUSB_PATH)/class/cdc/cdc_device.c \
-	$(TUSB_PATH)/class/msc/msc_device.c \
-	$(TUSB_PATH)/tusb.c
-
-endif
 
 #------------------------------------------------------------------------------
 # Assembly Files

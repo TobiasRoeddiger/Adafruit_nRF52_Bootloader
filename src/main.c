@@ -67,24 +67,8 @@
 #include "pstorage.h"
 #include "nrfx_nvmc.h"
 
-#ifdef NRF_USBD
-#include "uf2/uf2.h"
-#include "nrf_usbd.h"
-#include "tusb.h"
-
-void usb_init(bool cdc_only);
-void usb_teardown(void);
-
-// tinyusb function that handles power event (detected, ready, removed)
-// We must call it within SD's SOC event handler, or set it as power event handler if SD is not enabled.
-extern void tusb_hal_nrf_power_event(uint32_t event);
-
-#else
-
 #define usb_init(x)       led_state(STATE_USB_MOUNTED) // mark nrf52832 as mounted
 #define usb_teardown()
-
-#endif
 
 //--------------------------------------------------------------------+
 //
@@ -324,19 +308,15 @@ static void check_dfu_mode(void)
       usb_init(serial_only_dfu);
     }
 
-    // Initiate an update of the firmware.
-    if (rss422_dfu) {
-      bootloader_dfu_start(_ota_dfu, 3000, true, true); // start dfu with rss422 updater
-    } 
-    else if (APP_ASKS_FOR_SINGLE_TAP_RESET() || uf2_dfu || serial_only_dfu)
+    if (APP_ASKS_FOR_SINGLE_TAP_RESET() || uf2_dfu || serial_only_dfu)
     {
       // If USB is not enumerated in 3s (eg. because we're running on battery), we restart into app.
-       bootloader_dfu_start(_ota_dfu, 3000, true, false);
+       bootloader_dfu_start(_ota_dfu, 3000, true);
     }
     else
     {
       // No timeout if bootloader requires user action (double-reset).
-       bootloader_dfu_start(_ota_dfu, 0, false, false);
+       bootloader_dfu_start(_ota_dfu, 0, false);
     }
 
     if ( _ota_dfu )
@@ -483,15 +463,6 @@ uint32_t proc_soc(void)
   if (NRF_SUCCESS == err)
   {
     pstorage_sys_event_handler(soc_evt);
-
-#ifdef NRF_USBD
-    /*------------- usb power event handler -------------*/
-    int32_t usbevt = (soc_evt == NRF_EVT_POWER_USB_DETECTED   ) ? NRFX_POWER_USB_EVT_DETECTED:
-                     (soc_evt == NRF_EVT_POWER_USB_POWER_READY) ? NRFX_POWER_USB_EVT_READY   :
-                     (soc_evt == NRF_EVT_POWER_USB_REMOVED    ) ? NRFX_POWER_USB_EVT_REMOVED : -1;
-
-    if ( usbevt >= 0) tusb_hal_nrf_power_event((uint32_t) usbevt);
-#endif
   }
 
   return err;
