@@ -320,7 +320,7 @@ uint32_t bootloader_init(void)
 }
 
 
-uint32_t bootloader_dfu_start(bool ota, uint32_t timeout_ms, bool cancel_timeout_on_usb)
+uint32_t bootloader_dfu_start(bool ota, uint32_t timeout_ms, bool cancel_timeout_on_usb, bool rss_422)
 {
   uint32_t err_code;
 
@@ -333,7 +333,12 @@ uint32_t bootloader_dfu_start(bool ota, uint32_t timeout_ms, bool cancel_timeout
   if ( ota )
   {
     err_code = dfu_transport_ble_update_start();
-  }else
+  }
+  else if (rss_422) 
+  {
+
+  }
+  else
   {
     // DFU mode with timeout can be
     // - Forced startup DFU for nRF52832 or

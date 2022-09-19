@@ -115,6 +115,7 @@ extern void tusb_hal_nrf_power_event(uint32_t event);
 #define DFU_MAGIC_SERIAL_ONLY_RESET     0x4e
 #define DFU_MAGIC_UF2_RESET             0x57
 #define DFU_MAGIC_SKIP                  0x6d
+#define DFU_MAGIC_RSS422                0x89
 
 #define DFU_DBL_RESET_MAGIC             0x5A1AD5      // SALADS
 #define DFU_DBL_RESET_APP               0x4ee5677e
@@ -241,14 +242,15 @@ static void check_dfu_mode(void)
   _ota_dfu = (gpregret == DFU_MAGIC_OTA_APPJUM) || (gpregret == DFU_MAGIC_OTA_RESET);
 
   // Serial only mode
+  bool const rss422_dfu      = (gpregret == DFU_MAGIC_RSS422);
   bool const serial_only_dfu = (gpregret == DFU_MAGIC_SERIAL_ONLY_RESET);
   bool const uf2_dfu         = (gpregret == DFU_MAGIC_UF2_RESET);
   bool const dfu_skip        = (gpregret == DFU_MAGIC_SKIP);
 
   bool const reason_reset_pin = (NRF_POWER->RESETREAS & POWER_RESETREAS_RESETPIN_Msk) ? true : false;
 
-  // start either serial, uf2 or ble
-  bool dfu_start = _ota_dfu || serial_only_dfu || uf2_dfu ||
+  // start either serial, uf2, rs422 or ble
+  bool dfu_start = _ota_dfu || serial_only_dfu || uf2_dfu || rss422_dfu ||
                     (((*dbl_reset_mem) == DFU_DBL_RESET_MAGIC) && reason_reset_pin);
 
   // Clear GPREGRET if it is our values
@@ -313,6 +315,9 @@ static void check_dfu_mode(void)
 
       ble_stack_init();
     }
+    else if (rss422_dfu) {
+      // TODO: init rss422 stack?
+    }
     else
     {
       led_state(STATE_USB_UNMOUNTED);
@@ -320,15 +325,18 @@ static void check_dfu_mode(void)
     }
 
     // Initiate an update of the firmware.
-    if (APP_ASKS_FOR_SINGLE_TAP_RESET() || uf2_dfu || serial_only_dfu)
+    if (rss422_dfu) {
+      bootloader_dfu_start(_ota_dfu, 3000, true, true); // start dfu with rss422 updater
+    } 
+    else if (APP_ASKS_FOR_SINGLE_TAP_RESET() || uf2_dfu || serial_only_dfu)
     {
       // If USB is not enumerated in 3s (eg. because we're running on battery), we restart into app.
-       bootloader_dfu_start(_ota_dfu, 3000, true);
+       bootloader_dfu_start(_ota_dfu, 3000, true, false);
     }
     else
     {
       // No timeout if bootloader requires user action (double-reset).
-       bootloader_dfu_start(_ota_dfu, 0, false);
+       bootloader_dfu_start(_ota_dfu, 0, false, false);
     }
 
     if ( _ota_dfu )
