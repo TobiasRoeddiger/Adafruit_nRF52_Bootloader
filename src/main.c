@@ -67,6 +67,8 @@
 #include "pstorage.h"
 #include "nrfx_nvmc.h"
 
+#include "app_timer.h"
+
 #define usb_init(x)       led_state(STATE_USB_MOUNTED) // mark nrf52832 as mounted
 #define usb_teardown()
 
@@ -146,11 +148,30 @@ static void mbr_init_sd(void)
   sd_mbr_command(&com);
 }
 
+
+int test = 1;
+static void repeated_timer_handler(void * p_context)
+{
+  if (test == 1) {
+    nrf_gpio_cfg_output(_PINNUM(1, 8));
+    nrf_gpio_pin_write(_PINNUM(1, 8), 0);
+    test = 0;
+  } else {
+    nrf_gpio_cfg_output(_PINNUM(1, 8));
+    nrf_gpio_pin_write(_PINNUM(1, 8), 1);
+    test = 1;
+  }
+}
+
+
+
 //--------------------------------------------------------------------+
 //
 //--------------------------------------------------------------------+
 int main(void)
 {
+  // TODO: always reset into OTA https://github.com/adafruit/Adafruit_nRF52_Bootloader/issues/259
+
   // Populate Boot Address and MBR Param into MBR if not already
   // MBR_BOOTLOADER_ADDR/MBR_PARAM_PAGE_ADDR are used if available, else UICR registers are used
   // Note: skip it for now since this will prevent us to change the size of bootloader in the future
@@ -164,6 +185,14 @@ int main(void)
   bootloader_init();
 
   PRINTF("Bootloader Start\r\n");
+
+  nrf_gpio_cfg_output(_PINNUM(1, 8));
+  
+  app_timer_init();
+  APP_TIMER_DEF(m_repeated_timer_id); 
+  app_timer_create(&m_repeated_timer_id, APP_TIMER_MODE_REPEATED, repeated_timer_handler);
+  app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(2000), NULL);
+  nrf_gpio_pin_write(_PINNUM(1, 8), 0);
 
   led_state(STATE_BOOTLOADER_STARTED);
 
