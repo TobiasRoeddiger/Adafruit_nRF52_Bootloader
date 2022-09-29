@@ -68,6 +68,7 @@
 #include "nrfx_nvmc.h"
 
 #include "app_timer.h"
+#include "nrf_saadc.h"
 
 #define usb_init(x)       led_state(STATE_USB_MOUNTED) // mark nrf52832 as mounted
 #define usb_teardown()
@@ -149,21 +150,109 @@ static void mbr_init_sd(void)
 }
 
 
-int test = 1;
-static void repeated_timer_handler(void * p_context)
+
+//nrf_saadc_value_t value;
+//void saadc_init(void)
+//{
+//    nrf_saadc_channel_config_t channel_config;
+//
+//    //Initialize SAADC
+//    //nrfx_saadc_init(1);
+//    nrfx_saadc_init(1);
+//    nrf_saadc_channel_init(NULL, NRF_SAADC_INPUT_AIN0, &channel_config);
+//    nrf_saadc_buffer_init(NULL, (nrf_saadc_value_t *) &value, 1);
+//}
+static inline uint32_t mapResolution( uint32_t value, uint32_t from, uint32_t to )
 {
-  if (test == 1) {
-    nrf_gpio_cfg_output(_PINNUM(1, 8));
-    nrf_gpio_pin_write(_PINNUM(1, 8), 0);
-    test = 0;
-  } else {
-    nrf_gpio_cfg_output(_PINNUM(1, 8));
-    nrf_gpio_pin_write(_PINNUM(1, 8), 1);
-    test = 1;
+  if ( from == to )
+  {
+    return value ;
+  }
+
+  if ( from > to )
+  {
+    return value >> (from-to) ;
+  }
+  else
+  {
+    return value << (to-from) ;
   }
 }
 
+static uint32_t saadcReference = SAADC_CH_CONFIG_REFSEL_Internal;
+static uint32_t saadcSampleTime = SAADC_CH_CONFIG_TACQ_3us;
+static int readResolution = 10;
+static uint32_t saadcGain      = SAADC_CH_CONFIG_GAIN_Gain1_6;
+static bool saadcBurst = SAADC_CH_CONFIG_BURST_Disabled;
+#define SAADC_CH_CONFIG_GAIN_Pos (8UL) /*!< Position of GAIN field. */
+#define SAADC_CH_CONFIG_GAIN_Msk (0x7UL << SAADC_CH_CONFIG_GAIN_Pos) /*!< Bit mask of GAIN field. */
+#define SAADC_CH_CONFIG_BURST_Pos (24UL) /*!< Position of BURST field. */
+#define SAADC_CH_CONFIG_BURST_Msk (0x1UL << SAADC_CH_CONFIG_BURST_Pos) /*!< Bit mask of BURST field. */
+static uint32_t analogReadBootloader( uint32_t psel )
+{
+  uint32_t saadcResolution = SAADC_RESOLUTION_VAL_10bit;
+  uint32_t resolution = 10;
+  volatile int16_t value = 0;
+  NRF_SAADC->RESOLUTION = saadcResolution;
 
+  NRF_SAADC->ENABLE = (SAADC_ENABLE_ENABLE_Enabled << SAADC_ENABLE_ENABLE_Pos);
+  for (int i = 0; i < 8; i++) {
+    NRF_SAADC->CH[i].PSELN = SAADC_CH_PSELP_PSELP_NC;
+    NRF_SAADC->CH[i].PSELP = SAADC_CH_PSELP_PSELP_NC;
+  }
+ 
+
+  NRF_SAADC->CH[0].CONFIG = ((SAADC_CH_CONFIG_RESP_Bypass     << SAADC_CH_CONFIG_RESP_Pos)   & SAADC_CH_CONFIG_RESP_Msk)
+                            | ((SAADC_CH_CONFIG_RESP_Bypass   << SAADC_CH_CONFIG_RESN_Pos)   & SAADC_CH_CONFIG_RESN_Msk)
+                            | ((saadcGain                     << SAADC_CH_CONFIG_GAIN_Pos)   & SAADC_CH_CONFIG_GAIN_Msk)
+                            | ((saadcReference                << SAADC_CH_CONFIG_REFSEL_Pos) & SAADC_CH_CONFIG_REFSEL_Msk)
+                            | ((saadcSampleTime               << SAADC_CH_CONFIG_TACQ_Pos)   & SAADC_CH_CONFIG_TACQ_Msk)
+                            | ((SAADC_CH_CONFIG_MODE_SE       << SAADC_CH_CONFIG_MODE_Pos)   & SAADC_CH_CONFIG_MODE_Msk)
+                            | ((saadcBurst                    << SAADC_CH_CONFIG_BURST_Pos)   & SAADC_CH_CONFIG_BURST_Msk);
+  NRF_SAADC->CH[0].PSELN = psel;
+  NRF_SAADC->CH[0].PSELP = psel;
+
+
+  NRF_SAADC->RESULT.PTR = (uint32_t)&value;
+  NRF_SAADC->RESULT.MAXCNT = 1; // One sample
+
+  NRF_SAADC->TASKS_START = 0x01UL;
+
+  while (!NRF_SAADC->EVENTS_STARTED);
+  NRF_SAADC->EVENTS_STARTED = 0x00UL;
+
+  NRF_SAADC->TASKS_SAMPLE = 0x01UL;
+
+  while (!NRF_SAADC->EVENTS_END);
+  NRF_SAADC->EVENTS_END = 0x00UL;
+
+  NRF_SAADC->TASKS_STOP = 0x01UL;
+
+  while (!NRF_SAADC->EVENTS_STOPPED);
+  NRF_SAADC->EVENTS_STOPPED = 0x00UL;
+
+  if (value < 0) {
+    value = 0;
+  }
+
+  NRF_SAADC->ENABLE = (SAADC_ENABLE_ENABLE_Disabled << SAADC_ENABLE_ENABLE_Pos);
+
+  return mapResolution(value, resolution, readResolution);
+}
+
+
+volatile uint32_t analogReadValue = 0;
+static void repeated_timer_handler(void * p_context)
+{
+  analogReadValue = analogReadBootloader(SAADC_CH_PSELP_PSELP_AnalogInput1); // for some reason this corresponds to A5 on feather, maybe different pins in bootloader?
+  if (analogReadValue < 250) {
+    nrf_gpio_cfg_output(_PINNUM(1, 8));
+    nrf_gpio_pin_write(_PINNUM(1, 8), 0);
+  } else {
+    nrf_gpio_cfg_output(_PINNUM(1, 8));
+    nrf_gpio_pin_write(_PINNUM(1, 8), 1);
+  }
+}
 
 //--------------------------------------------------------------------+
 //
@@ -191,9 +280,12 @@ int main(void)
   app_timer_init();
   APP_TIMER_DEF(m_repeated_timer_id); 
   app_timer_create(&m_repeated_timer_id, APP_TIMER_MODE_REPEATED, repeated_timer_handler);
-  app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(2000), NULL);
+  app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(50), NULL);
   nrf_gpio_pin_write(_PINNUM(1, 8), 0);
 
+  // setup ADC
+
+  
   led_state(STATE_BOOTLOADER_STARTED);
 
   // When updating SoftDevice, bootloader will reset before swapping SD
