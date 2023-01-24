@@ -242,16 +242,29 @@ static uint32_t analogReadBootloader( uint32_t psel )
 
 
 volatile uint32_t analogReadValue = 0;
+volatile uint32_t toggleWdPin = 0;
 static void repeated_timer_handler(void * p_context)
 {
   analogReadValue = analogReadBootloader(SAADC_CH_PSELP_PSELP_AnalogInput1); // for some reason this corresponds to A5 on feather, maybe different pins in bootloader?
-  if (analogReadValue < 250) {
+  
+  // SETS THE TARGET TEMPERATURE
+  if (analogReadValue < 470) {
     nrf_gpio_cfg_output(_PINNUM(1, 8));
     nrf_gpio_pin_write(_PINNUM(1, 8), 0);
   } else {
     nrf_gpio_cfg_output(_PINNUM(1, 8));
     nrf_gpio_pin_write(_PINNUM(1, 8), 1);
   }
+
+  // RESET WATCHDOG
+  nrf_gpio_cfg_output(_PINNUM(1, 11));
+  if (toggleWdPin == 0) {
+    nrf_gpio_pin_write(_PINNUM(1, 11), 1);
+    toggleWdPin = 1;
+  } else {
+    nrf_gpio_pin_write(_PINNUM(1, 11), 0);
+    toggleWdPin = 0;
+  }  
 }
 
 //--------------------------------------------------------------------+
@@ -273,19 +286,16 @@ int main(void)
   board_init();
   bootloader_init();
 
-  PRINTF("Bootloader Start\r\n");
-
   nrf_gpio_cfg_output(_PINNUM(1, 8));
+  nrf_gpio_cfg_output(_PINNUM(1, 11));
   
   app_timer_init();
   APP_TIMER_DEF(m_repeated_timer_id); 
   app_timer_create(&m_repeated_timer_id, APP_TIMER_MODE_REPEATED, repeated_timer_handler);
   app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(50), NULL);
   nrf_gpio_pin_write(_PINNUM(1, 8), 0);
+  nrf_gpio_pin_write(_PINNUM(1, 11), 0);
 
-  // setup ADC
-
-  
   led_state(STATE_BOOTLOADER_STARTED);
 
   // When updating SoftDevice, bootloader will reset before swapping SD
